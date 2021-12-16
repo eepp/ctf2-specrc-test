@@ -1,9 +1,9 @@
 // Please render with Asciidoctor
-:doc-id: CTF2-SPECRC-1.0
+:doc-id: CTF2-SPECRC-2.0
 
 = **{doc-id}**: Common Trace Format version{nbsp}2 release candidate
 Philippe Proulx <pproulx@efficios.com>
-v1.0, 25 November 2021
+v2.0, 9 December 2021
 :attribute-missing: warn
 :icons: font
 :nofooter:
@@ -144,6 +144,40 @@ IMPORTANT: The key words {must}, {must-not}, {required},
 {should}, {should-not}, {may}, and {optional} in this document, when
 emphasized, are to be interpreted as described in
 https://www.ietf.org/rfc/rfc2119.txt[RFC{nbsp}2119].
+
+== Revision history
+
+Significant changes since
+https://diamon.org/ctf/files/CTF2-SPECRC-1.0.html[_**CTF2-SPECRC-1.0**_]:
+
+* Describe how to use a <<field-loc,field location>> with a procedure in
+  a new <<field-loc-dec>> section to make constraints easier to
+  understand.
+
+* Rename the `members` property of a {struct-fc} to `member-classes`
+  as this JSON array contains
+  <<struct-member-cls,structure field member classes>>.
+
+* Make an <<opt-fc,optional field>> require that _all_ its
+  possible selector fields be boolean fields, unsigned integer fields,
+  or signed integer fields.
++
+Correspondingly, make a <<var-fc,variant field>> require that _all_ its
+possible selector fields be either unsigned integer fields or signed
+integer fields.
++
+This constraint exists to accomodate some consumer implementations, in
+particular the ones with limited integer types.
+
+* Add the "`nil`" <<dec-val-type,decoding value type>> so that
+  <<opt-field-dec,decoding an optional field>> always generates a value.
+
+* Specify that an "`array`" decoding value contains a sequence of values,
+  whatever their types.
++
+Indeed, an <<array-fc,array field>> {may} contain <<var-fc,variant
+fields>>, making it possible for a resulting array value to contain
+values having different types.
 
 == What's {ctf2}?
 
@@ -871,7 +905,7 @@ The value of this property {must} be one of:
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -912,10 +946,10 @@ their value:
 [[field-loc]]
 ==== Field location
 
-A _field location_ is a means for a <<consumer-def,consumer>> to find a
-field which it needs to decode another field.
+A _field location_ is a means for a <<consumer-def,consumer>> to locate
+a field which it needs to <<ds-dec,decode>> another, subsequent field.
 
-A consumer needs to find another field to decode instances of the
+A consumer needs to locate another field to decode instances of the
 following <<fc,classes>>:
 
 {c-dl-array-fc}::
@@ -932,543 +966,39 @@ following <<fc,classes>>:
     Needs a <<fl-int-fc,{fl-int}>> or <<vl-int-fc,{vl-int}>> selector
     field.
 
-A field location is a JSON array, where, in this order:
+Let _**T**_ be an anteriorly decoded field which a consumer needs to
+decode another field{nbsp}{var-s}. A field location is a JSON array
+where, in this order:
 
 . The first element is the name (JSON string) of a root field from
-  where to start the lookup, amongst:
+  where to start the lookup of{nbsp}__**T**__, amongst:
 +
+--
 [horizontal]
-`"packet-header"`:::
-    <<pkt-header,Packet header>>
-`"packet-context"`:::
-    <<pkt-ctx,Packet context>>
-`"event-record-header"`:::
-    <<er-header,Event record header>>
-`"event-record-common-context"`:::
-    <<er-common-ctx,Event record common context>>
-`"event-record-specific-context"`:::
-    <<er-spec-ctx,Event record specific context>>
-`"event-record-payload"`:::
-    <<er-payload,Event record payload>>
+`"packet-header"`::
+    <<pkt-header,Header>> of the <<pkt,packet>> of{nbsp}{var-s}.
+`"packet-context"`::
+    <<pkt-ctx,Context>> of the packet of{nbsp}{var-s}.
+`"event-record-header"`::
+    <<er-header,Header>> of the <<er,event record>> of{nbsp}{var-s}.
+`"event-record-common-context"`::
+    <<er-common-ctx,Common context>> of the event record of{nbsp}{var-s}.
+`"event-record-specific-context"`::
+    <<er-spec-ctx,Specific context>> of the event record of{nbsp}{var-s}.
+`"event-record-payload"`::
+    <<er-payload,Payload>> of the event record of{nbsp}{var-s}.
+--
++
+In other words, __**T**__ {must} be in the same packet or event record
+as{nbsp}{var-s}.
 
 . The following elements are <<struct-fc,structure>> field member names
-  (JSON strings) to follow to find the target field.
+  (JSON strings) to follow to locate the target field.
 
 The length of a field location {must} be greater than or equal to two.
 
-Let _**T**_ be a field which a consumer needs to decode another
-field{nbsp}{var-s}:
-
-* If {var-s} is in a packet header, then{nbsp}__**T**__ {must} be in the
-  _same_ packet header.
-
-* If {var-s} is in a packet context, then{nbsp}__**T**__ {must} be in
-  one of:
-** The packet header the _same_ packet.
-** The _same_ packet context.
-
-* If {var-s} is in an event record header, then{nbsp}__**T**__ {must}
-  be in one of:
-** The packet header of the _same_ packet.
-** The packet context of the _same_ packet.
-** The _same_ event record header.
-
-* If {var-s} is in an event record common context, then{nbsp}__**T**__
-  {must} be in one of:
-** The packet header of the _same_ packet.
-** The packet context of the _same_ packet.
-** The event record header of the _same_ event record.
-** The _same_ event record common context.
-
-* If {var-s} is in an event record specific context, then{nbsp}__**T**__
-  {must} be in one of:
-** The packet header of the _same_ packet.
-** The packet context of the _same_ packet.
-** The event record header of the _same_ event record.
-** The event record common context of the _same_ event record.
-** The _same_ event record specific context.
-
-* If {var-s} is in an event record payload, then{nbsp}__**T**__ {must}
-  be in one of:
-** The packet header of the _same_ packet.
-** The packet context of the _same_ packet.
-** The event record header of the _same_ event record.
-** The event record common context of the _same_ event record.
-** The event record common specific of the _same_ event record.
-** The _same_ event record payload.
-
-* If {var-s} and _**T**_ are _not_ in the same root field,
-  then{nbsp}__**T**__ {must-not} be in any <<array-fc,array>> or
-  <<opt-fc,optional>> field.
-
-* If {var-s} and _**T**_ are in the same root field, then:
-** If {var-s} is in an array field, then{nbsp}__**T**__ {must} be in the
-   _same_ array field element as{nbsp}{var-s}.
-** If {var-s} is in an optional field, then{nbsp}__**T**__ {must} be in
-   the _same_ optional field as{nbsp}{var-s}.
-
-If any structure member name{nbsp}__**N**__ of a field
-location{nbsp}__**L**__ names a <<var-fc,variant field>>, then:
-
-If _**N**_ is _not_ the last element of{nbsp}__**L**__::
-    The variant field {must} select a structure field, from which the
-    lookup process can continue, recursively.
-
-If _**N**_ is the last element of{nbsp}__**L**__::
-    The variant field {must} select the target field
-    (<<fl-int-fc,{fl-int}>>, <<vl-int-fc,{vl-int}>>, or
-    <<fl-bool-fc,{fl-bool}>>), recursively.
-
-In both cases, _all_ the options of the variant field class {must} make
-it possible for the lookup process to continue.
-
-.<<dl-array,{c-dl-array}>> field and its length field in the same root field.
-====
-Assume the following JSON object is an event record payload {struct-fc}.
-
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "corn", <3>
-      "field-class": {
-        "type": "fixed-length-unsigned-integer",
-        "length": 32,
-        "byte-order": "little-endian"
-      }
-    },
-    {
-      "name": "inside",
-      "field-class": {
-        "type": "fixed-length-unsigned-integer",
-        "length": 16,
-        "byte-order": "little-endian"
-      }
-    },
-    {
-      "name": "carbon",
-      "field-class": {
-        "type": "dynamic-length-array", <1>
-        "length-field-location": ["event-record-payload", "corn"], <2>
-        "element-field-class": {
-          "type": "null-terminated-string"
-        }
-      }
-    }
-  ]
-}
-----
-<1> {c-dl-array-fc}.
-<2> Length field location of the {dl-array-fc}.
-<3> Length member class.
-====
-
-.{c-dl-array} field and its length field in the same root field, within the same array field element.
-====
-Assume the following JSON object is an event record payload {struct-fc}.
-
-Both the {dl-array} field and its length field exist within the same
-element of the <<sl-array-fc,{sl-array}>> field named `nature`.
-
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "norm",
-      "field-class": {
-        "type": "null-terminated-string"
-      }
-    },
-    {
-      "name": "nature",
-      "field-class": {
-        "type": "static-length-array",
-        "length": 43,
-        "element-field-class": {
-          "type": "structure",
-          "members": [
-            {
-              "name": "laser", <3>
-              "field-class": {
-                "type": "variable-length-unsigned-integer"
-              }
-            },
-            {
-              "name": "joystick",
-              "field-class": {
-                "type": "dynamic-length-array", <1>
-                "length-field-location": [ <2>
-                  "event-record-payload",
-                  "nature",
-                  "laser"
-                ],
-                "element-field-class": {
-                  "type": "null-terminated-string"
-                }
-              }
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-----
-<1> {c-dl-array-fc}.
-<2> Length field location of the {dl-array-fc}.
-<3> Length member class.
-====
-
-.{c-dl-array} and its length field in the same root field, within the same <<var-fc,variant>> field.
-====
-Assume the following JSON object is an event record payload {struct-fc}.
-
-Both the {dl-array} field and its length field exist within the same
-option of the <<var-fc,variant>> field named `clinic`.
-
-Moreover, the selector field of the `clinic` variant field is the
-`lawyer` field.
-
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "lawyer", <5>
-      "field-class": {
-        "type": "fixed-length-signed-integer",
-        "length": 16,
-        "byte-order": "little-endian"
-      }
-    },
-    {
-      "name": "clinic",
-      "field-class": {
-        "type": "variant",
-        "selector-field-location": ["event-record-payload", "lawyer"], <4>
-        "options": [
-          {
-            "selector-field-ranges": [[0, 0]],
-            "field-class": {
-              "type": "null-terminated-string"
-            }
-          },
-          {
-            "selector-field-ranges": [[1, 4]],
-            "field-class": {
-              "type": "structure",
-              "members": [
-                {
-                  "name": "lemon", <3>
-                  "field-class": {
-                    "type": "fixed-length-unsigned-integer",
-                    "length": 8,
-                    "byte-order": "big-endian"
-                  }
-                },
-                {
-                  "name": "joystick",
-                  "field-class": {
-                    "type": "dynamic-length-array", <1>
-                    "length-field-location": [ <2>
-                      "event-record-payload",
-                      "clinic",
-                      "lemon"
-                    ],
-                    "element-field-class": {
-                      "type": "null-terminated-string"
-                    }
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "selector-field-ranges": [[5, 5], [7, 7]],
-            "field-class": {
-              "type": "fixed-length-boolean",
-              "length": 8,
-              "byte-order": "little-endian"
-            }
-          }
-        ]
-      }
-    }
-  ]
-}
-----
-<1> {c-dl-array-fc}.
-<2> Length field location of the {dl-array-fc}.
-<3> Length member class.
-<4> Selector field location of the variant field class.
-<5> Selector member class.
-====
-
-.{c-dl-array} and its length field in the same root field; length field is a variant field.
-====
-Assume the following JSON object is an event record payload {struct-fc}.
-
-The length field of the {dl-array} field is a variant field: it can be
-an 8-bit, a 16-bit, or a 32-bit <<fl-int-fc,{fl-int}>> field, depending
-on the selection of the variant field.
-
-Moreover, the selector field of the variant field is located in another
-root field (event record specific context).
-
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "glass", <3>
-      "field-class": {
-        "type": "variant",
-        "selector-field-location": ["event-record-specific-context", "sel"],
-        "options": [
-          {
-            "selector-field-ranges": [[0, 0]],
-            "field-class": {
-              "type": "fixed-length-unsigned-integer", <4>
-              "length": 8,
-              "byte-order": "little-endian"
-            }
-          },
-          {
-            "selector-field-ranges": [[1, 1]],
-            "field-class": {
-              "type": "fixed-length-unsigned-integer", <4>
-              "length": 16,
-              "byte-order": "little-endian"
-            }
-          },
-          {
-            "selector-field-ranges": [[2, 2]],
-            "field-class": {
-              "type": "fixed-length-unsigned-integer", <4>
-              "length": 32,
-              "byte-order": "little-endian"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "margin",
-      "field-class": {
-        "type": "dynamic-length-array", <1>
-        "length-field-location": ["event-record-payload", "glass"], <2>
-        "element-field-class": {
-          "type": "null-terminated-string"
-        }
-      }
-    }
-  ]
-}
-----
-<1> {c-dl-array-fc}.
-<2> Length field location of the {dl-array-fc}.
-<3> Length member class.
-<4> Possible length field class.
-====
-
-.{c-dl-array} and its length field in the same root field; structure field containing length field is a variant field.
-====
-Assume the following JSON object is an event record payload {struct-fc}.
-
-The length field of the {dl-array} field is within a structure field
-which is a variant field.
-
-Moreover:
-
-* The selector field of the variant field is located in another root
-  field (event record common context).
-
-* The field class of the third option of the `glass` variant field class
-  contains a {dl-blob-fc} (`lock` member); the
-  length field of its instance is the previous member (`eagle`) within
-  the same structure field.
-
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "glass",
-      "field-class": {
-        "type": "variant",
-        "selector-field-location": ["event-record-common-context", "sel"],
-        "options": [
-          {
-            "selector-field-ranges": [[0, 0]],
-            "field-class": {
-              "type": "structure",
-              "members": [
-                {
-                  "name": "eagle",
-                  "field-class": {
-                    "type": "fixed-length-unsigned-integer", <3>
-                    "length": 16,
-                    "byte-order": "little-endian"
-                  }
-                },
-                {
-                  "name": "road",
-                  "field-class": {
-                    "type": "null-terminated-string"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "selector-field-ranges": [[32, 172]],
-            "field-class": {
-              "type": "structure",
-              "members": [
-                {
-                  "name": "nuance",
-                  "field-class": {
-                    "type": "null-terminated-string"
-                  }
-                },
-                {
-                  "name": "eagle",
-                  "field-class": {
-                    "type": "fixed-length-unsigned-integer", <3>
-                    "length": 24,
-                    "byte-order": "big-endian"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "selector-field-ranges": [[5, 5]],
-            "field-class": {
-              "type": "structure",
-              "members": [
-                {
-                  "name": "eagle", <5>
-                  "field-class": {
-                    "type": "variable-length-unsigned-integer" <3>
-                  }
-                },
-                {
-                  "name": "lock",
-                  "field-class": {
-                    "type": "dynamic-length-blob",
-                    "length-field-location": [ <4>
-                      "event-record-payload",
-                      "glass",
-                      "eagle"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "margin",
-      "field-class": {
-        "type": "dynamic-length-array", <1>
-        "length-field-location": [ <2>
-          "event-record-payload",
-          "glass",
-          "eagle"
-        ],
-        "element-field-class": {
-          "type": "null-terminated-string"
-        }
-      }
-    }
-  ]
-}
-----
-<1> {c-dl-array-fc}.
-<2> Length field location of the {dl-array-fc}.
-<3> Possible length field class.
-<4> Length field location of the {dl-blob-fc}.
-<5> Length field class for the {dl-blob-fc}.
-
-Note that both the {dl-array} and {dl-blob} field classes have the same
-length field location.
-====
-
-.{c-dl-array} and its length field in another root field.
-====
-Assume the following JSON objects are the event record specific context
-and payload <<struct-fc,structure field classes>> of the same
-<<erc-frag,event record class>>.
-
-The length field of the {dl-array} field of the event record payload is
-within the event record specific context.
-
-.Event record specific context field class.
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "cook",
-      "field-class": {
-        "type": "fixed-length-floating-point-number",
-        "length": 64,
-        "byte-order": "little-endian"
-      }
-    },
-    {
-      "name": "vegetable", <1>
-      "field-class": {
-        "type": "variable-length-unsigned-integer"
-      }
-    }
-  ]
-}
-----
-<1> Length member class.
-
-.Event record payload field class.
-[source,json]
-----
-{
-  "type": "structure",
-  "members": [
-    {
-      "name": "avenue",
-      "field-class": {
-        "type": "dynamic-length-array", <1>
-        "length-field-location": [ <2>
-          "event-record-specific-context",
-          "vegetable"
-        ],
-        "element-field-class": {
-          "type": "null-terminated-string"
-        }
-      }
-    },
-    {
-      "name": "railroad",
-      "field-class": {
-        "type": "null-terminated-string"
-      }
-    }
-  ]
-}
-----
-<1> {c-dl-array-fc}.
-<2> Length field location of the {dl-array-fc}.
-====
+See <<field-loc-dec>> to learn how to locate a field with a field
+location.
 
 [[int-range-set]]
 ==== Integer range set
@@ -1530,8 +1060,8 @@ field class. For example, the `packet-magic-number` role of a
 
 Roles are a JSON array of role names (JSON strings).
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
-root field classes.
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles within
+their root field classes.
 
 [[fl-ba-fc]]
 ==== {c-fl-ba} field class
@@ -1596,7 +1126,7 @@ The value of this property {must} be a positive power of two.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -1729,7 +1259,7 @@ Property inherited from the {fl-ba-fc}.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -1934,7 +1464,7 @@ Property inherited from the <<int-fc,abstract integer field class>>.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2213,7 +1743,7 @@ Property inherited from the <<enum-fc,abstract enumeration field class>>.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2388,7 +1918,7 @@ Property inherited from the {fl-ba-fc}.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2480,7 +2010,7 @@ The value of this property {must} be `"variable-length-bit-array"`.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2589,7 +2119,7 @@ Property inherited from the <<int-fc,abstract integer field class>>.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2718,7 +2248,7 @@ Property inherited from the <<enum-fc,abstract enumeration field class>>.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2816,7 +2346,7 @@ The value of this property {must} be `"null-terminated-string"`.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2900,7 +2430,7 @@ The value of this property {must} be greater than or equal to zero.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -2969,7 +2499,7 @@ any, form a UTF-8-encoded string. All the bytes after the first null
 
 The length, or number of bytes, of a {dl-str} field is the value of
 another, anterior (already encoded/decoded) _length_ field. A
-<<consumer-def,consumer>> can find this length field thanks to the
+<<consumer-def,consumer>> can locate this length field thanks to the
 `length-field-location` property of the {dl-str} field class.
 
 .Properties of a {dl-str} field class {var-f}.
@@ -3001,7 +2531,7 @@ The class of the length field {must} be one of:
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3119,7 +2649,7 @@ Property inherited from the <<blob-fc,abstract BLOB field class>>.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3191,7 +2721,7 @@ bytes with an associated IANA media type.
 
 The length, or number of bytes, of a {dl-blob} field is the value of
 another, anterior (already encoded/decoded) _length_ field. A
-<<consumer-def,consumer>> can find this length field thanks to the
+<<consumer-def,consumer>> can locate this length field thanks to the
 `length-field-location` property of the {dl-blob} field class.
 
 .Properties of a {dl-blob} field class {var-f}.
@@ -3232,7 +2762,7 @@ Property inherited from the <<blob-fc,abstract BLOB field class>>.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3302,7 +2832,7 @@ The value of this property {must} be `"structure"`.
 |Yes
 |
 
-|`members`
+|`member-classes`
 |JSON array of <<struct-member-cls,structure field member classes>>
 |Classes of the members of an instance of{nbsp}{var-f}.
 
@@ -3328,7 +2858,7 @@ of{nbsp}{var-f} {may} be greater than the value of this property.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3365,7 +2895,7 @@ in the <<preamble-frag,preamble fragment>> of the metadata stream.
 ----
 {
   "type": "structure",
-  "members": [
+  "member-classes": [
     {
       "name": "Villeray",
       "field-class": {
@@ -3405,7 +2935,7 @@ in the <<preamble-frag,preamble fragment>> of the metadata stream.
 ----
 {
   "type": "structure",
-  "members": [
+  "member-classes": [
     {
       "name": "St-Denis",
       "field-class": {
@@ -3433,7 +2963,7 @@ in the <<preamble-frag,preamble fragment>> of the metadata stream.
 ----
 {
   "type": "structure",
-  "members": [
+  "member-classes": [
     {
       "name": "Henri-Julien",
       "field-class": {
@@ -3601,7 +3131,7 @@ The value of this property {must} be greater than or equal to zero.
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3680,7 +3210,7 @@ A {dl-array} field is a sequence of zero or more element fields.
 
 The length, or number of element fields, of a {dl-array} field is the
 value of another, anterior (already encoded/decoded) _length_ field. A
-<<consumer-def,consumer>> can find this length field thanks to the
+<<consumer-def,consumer>> can locate this length field thanks to the
 `length-field-location` property of the {dl-array} field class.
 
 .Properties of a {dl-array} field class {var-f}.
@@ -3720,7 +3250,7 @@ The class of the length field {must} be one of:
 |<<roles,Roles>>
 |Roles of an instance of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3792,7 +3322,7 @@ In this case, the optional field is said to be _enabled_.
 +
 In this case, the optional field is said to be _disabled_.
 
-A <<consumer-def,consumer>> can find the selector field thanks to the
+A <<consumer-def,consumer>> can locate the selector field thanks to the
 `selector-field-location` property of the optional field class.
 
 .Properties of an optional field class {var-f}.
@@ -3819,7 +3349,7 @@ The value of this property {must} be `"optional"`.
 |Location of the field of which the value indicates whether or not an
 instance of{nbsp}{var-f} is enabled.
 
-The selector field{nbsp}__**S**__ {must} be an instance of one of:
+A selector field{nbsp}__**S**__ {must} be an instance of one of:
 
 {c-fl-bool-fc}::
     An instance of{nbsp}{var-f} is enabled when{nbsp}__**S**__ is
@@ -3830,6 +3360,23 @@ The selector field{nbsp}__**S**__ {must} be an instance of one of:
     An instance of{nbsp}{var-f} is enabled when the value
     of{nbsp}__**S**__ is an element of any of the integer ranges of the
     `selector-field-ranges` property of{nbsp}{var-f}.
+
+For a given instance of{nbsp}{var-f}, the `type` property of the
+<<fc,classes>> of _all_ the possible selector fields {must} be
+one of:
+
+* <<fl-bool-fc,``"fixed-length-boolean"``>>
+* Any of:
+** <<fl-int-fc,``"fixed-length-unsigned-integer"``>>
+** <<fl-enum-fc,``"fixed-length-unsigned-enumeration"``>>
+** <<vl-int-fc,``"variable-length-unsigned-integer"``>>
+** <<vl-enum-fc,``"variable-length-unsigned-enumeration"``>>
+
+* Any of:
+** <<fl-int-fc,``"fixed-length-signed-integer"``>>
+** <<fl-enum-fc,``"fixed-length-signed-enumeration"``>>
+** <<vl-int-fc,``"variable-length-signed-integer"``>>
+** <<vl-enum-fc,``"variable-length-signed-enumeration"``>>
 |Yes
 |
 
@@ -3845,7 +3392,7 @@ or a {vl-int-fc}.
 |<<roles,Roles>>
 |Roles of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -3911,7 +3458,7 @@ A variant field is, depending on the value of another, anterior (already
 encoded/decoded) _selector_ field, the instance of a specific, effective
 field class amongst one or more _variant field class options_.
 
-A <<consumer-def,consumer>> can find the selector field thanks to the
+A <<consumer-def,consumer>> can locate the selector field thanks to the
 `selector-field-location` property of the variant field class.
 
 .Properties of a variant field class {var-f}.
@@ -3948,10 +3495,21 @@ options {must-not} intersect.
 of{nbsp}{var-f} contains the effective class of an instance
 of{nbsp}{var-f}.
 
-The selector field {must} be an instance of one of:
+For a given instance of{nbsp}{var-f}, the `type` property of the
+<<fc,classes>> of _all_ the possible selector fields {must} be
+one of:
 
-* {c-fl-int-fc}
-* {c-vl-int-fc}
+* Any of:
+** <<fl-int-fc,``"fixed-length-unsigned-integer"``>>
+** <<fl-enum-fc,``"fixed-length-unsigned-enumeration"``>>
+** <<vl-int-fc,``"variable-length-unsigned-integer"``>>
+** <<vl-enum-fc,``"variable-length-unsigned-enumeration"``>>
+
+* Any of:
+** <<fl-int-fc,``"fixed-length-signed-integer"``>>
+** <<fl-enum-fc,``"fixed-length-signed-enumeration"``>>
+** <<vl-int-fc,``"variable-length-signed-integer"``>>
+** <<vl-enum-fc,``"variable-length-signed-enumeration"``>>
 |Yes
 |
 
@@ -3959,7 +3517,7 @@ The selector field {must} be an instance of one of:
 |<<roles,Roles>>
 |Roles of{nbsp}{var-f}.
 
-See <<tc-frag>> and <<dsc-frag>> which indicate accepted roles for their
+See <<tc-frag>> and <<dsc-frag>> which indicate accepted within their
 root field classes.
 |No
 |`+[]+`
@@ -4423,7 +3981,7 @@ uniquely identify a data stream within a <<trace,trace>>.
   ],
   "packet-header-field-class": {
     "type": "structure",
-    "members": [
+    "member-classes": [
       {
         "name": "the magic!",
         "field-class": {
@@ -4532,14 +4090,14 @@ an instance of{nbsp}{var-f} is unknown.
 
 |`offset`
 |<<clock-offset,Clock offset>>
-|Offset of an instance ofbsp}{var-f} relative to its origin.
+|Offset of an instance of{nbsp}{var-f} relative to its origin.
 
 Let:
 
-* _**H**_ be the value of the `frequency` property of{nbsp}{var-f}.
-* {var-o} be the value of this property.
-* {var-s} be the value of the `seconds` property of{nbsp}{var-o}.
-* _**C**_ be the value of the `cycles` property of{nbsp}{var-o}.
+. _**H**_ be the value of the `frequency` property of{nbsp}{var-f}.
+. {var-o} be the value of this property.
+. {var-s} be the value of the `seconds` property of{nbsp}{var-o}.
+. _**C**_ be the value of the `cycles` property of{nbsp}{var-o}.
 
 Then the effective offset of an instance of{nbsp}{var-f}, in clock
 cycles,
@@ -5357,11 +4915,14 @@ While a field is an actual <<seq-def,sequence>> of bits within a
 <<ds,data stream>>, a value is its conceptual interpretation with
 attached semantics.
 
-The types of values are:
+[[dec-val-type]] The types of values are:
 
 [%header%autowidth,cols="a,a"]
 |===
 |Value type |Possible values
+
+|Nil
+|None.
 
 |Boolean
 |_True_ or _false_.
@@ -5376,10 +4937,10 @@ The types of values are:
 |<<seq-def,Sequence>> of https://home.unicode.org/[Unicode] characters.
 
 |Array
-|Sequence of values having the same type.
+|Sequence of values.
 
 |Structure
-|Sequence of named values (members) which {may} have different types.
+|Sequence of named values (members).
 |===
 
 To decode an instance of a field class{nbsp}{var-f}, depending on the
@@ -5494,8 +5055,8 @@ class>>{nbsp}{var-f} is, depending on the value of its `type` property:
 * The value of the `minimum-alignment` property of{nbsp}{var-f}.
 
 * The alignment requirements of the instances of the `field-class`
-  property of each <<struct-member-cls,member class>> of the `members`
-  property of{nbsp}{var-f}.
+  property of each <<struct-member-cls,member class>> of the
+  `member-classes` property of{nbsp}{var-f}.
 
 |
 * <<sl-array-fc,`"static-length-array"`>>
@@ -5515,6 +5076,527 @@ requirement{nbsp}__**A**__ (bits):
 * Set {var-dec-o} to
   {var-dec-po}{nbsp}pass:[+]{nbsp}(({var-dec-o-minus-po}{nbsp}pass:[+]{nbsp}__**A**__{nbsp}{minus}{nbsp}1){nbsp}&{nbsp}{minus}__**A**__),
   where "`&`" is the bitwise _AND_ operator.
+
+[[field-loc-dec]]
+==== Field location procedure
+
+To locate a previously decoded field using a
+<<field-loc,field location>>{nbsp}__**FL**__:
+
+. Let {var-v} be, depending on the first element of{nbsp}__**FL**__:
++
+--
+`"packet-header"`::
+    The <<pkt-header,header>> structure of{nbsp}__**P**__
+    (<<pkt-dec,current packet>>).
+
+`"packet-context"`::
+    The <<pkt-ctx,context>> structure of{nbsp}__**P**__.
+
+`"event-record-header"`::
+    The <<er-header,header>> structure of{nbsp}__**E**__
+    (<<er-dec,current event record>>).
+
+`"event-record-common-context"`::
+    The <<er-common-ctx,common context>> structure of{nbsp}__**E**__.
+
+`"event-record-specific-context"`::
+    The <<er-spec-ctx,specific context>> structure of{nbsp}__**E**__.
+
+`"event-record-payload"`::
+    The <<er-payload,payload>> structure of{nbsp}__**E**__.
+--
++
+If the consumer cannot set {var-v} because there's no such structure or
+because it's not already decoded nor currently being decoded, then
+report an error and abort the data stream decoding process.
+
+. For each element{nbsp}__**FLE**__ of{nbsp}__**FL**__, starting from
+  the second element:
+
+.. Let {var-v} be the value of the member named{nbsp}__**FLE**__
+   within{nbsp}{var-v}.
++
+If no member is named{nbsp}__**FLE**__ within{nbsp}{var-v}, then
+report an error and abort the data stream decoding process.
++
+If the member named{nbsp}__**FLE**__ within{nbsp}{var-v} is not already
+decoded nor currently being decoded, then report an error and abort
+the data stream decoding process.
+
+.. Depending on the <<dec-val-type,type>> of {var-v}:
++
+--
+Boolean::
+Signed integer::
+Unsigned integer::
+    If{nbsp}__**FLE**__ is not the last element of{nbsp}__**FL**__,
+    then report an error and abort the data stream decoding process.
+
+Structure::
+    Continue.
+
+Array::
+    While {var-v} is an array:
++
+* If {var-v} is not currently being decoded, then report an error and
+  abort the data stream decoding process.
++
+Set {var-v} to the element of {var-v} currently being decoded.
+
+Other::
+    Report an error and abort the data stream decoding process.
+--
+
+{var-v} is the located field.
+
+.<<dl-array,{c-dl-array}>> field and its length field in the same root field.
+====
+Assume the following JSON object is an event record payload {struct-fc}.
+
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "corn", <3>
+      "field-class": {
+        "type": "fixed-length-unsigned-integer",
+        "length": 32,
+        "byte-order": "little-endian"
+      }
+    },
+    {
+      "name": "inside",
+      "field-class": {
+        "type": "fixed-length-unsigned-integer",
+        "length": 16,
+        "byte-order": "little-endian"
+      }
+    },
+    {
+      "name": "carbon",
+      "field-class": {
+        "type": "dynamic-length-array", <1>
+        "length-field-location": ["event-record-payload", "corn"], <2>
+        "element-field-class": {
+          "type": "null-terminated-string"
+        }
+      }
+    }
+  ]
+}
+----
+<1> {c-dl-array-fc}.
+<2> Length field location of the {dl-array-fc}.
+<3> Length member class.
+====
+
+.{c-dl-array} field and its length field in the same root field, within the same array field element.
+====
+Assume the following JSON object is an event record payload {struct-fc}.
+
+Both the {dl-array} field and its length field exist within the same
+element of the <<sl-array-fc,{sl-array}>> field named `nature`.
+
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "norm",
+      "field-class": {
+        "type": "null-terminated-string"
+      }
+    },
+    {
+      "name": "nature",
+      "field-class": {
+        "type": "static-length-array",
+        "length": 43,
+        "element-field-class": {
+          "type": "structure",
+          "member-classes": [
+            {
+              "name": "laser", <3>
+              "field-class": {
+                "type": "variable-length-unsigned-integer"
+              }
+            },
+            {
+              "name": "joystick",
+              "field-class": {
+                "type": "dynamic-length-array", <1>
+                "length-field-location": [ <2>
+                  "event-record-payload",
+                  "nature",
+                  "laser"
+                ],
+                "element-field-class": {
+                  "type": "null-terminated-string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+----
+<1> {c-dl-array-fc}.
+<2> Length field location of the {dl-array-fc}.
+<3> Length member class.
+====
+
+.{c-dl-array} and its length field in the same root field, within the same <<var-fc,variant>> field.
+====
+Assume the following JSON object is an event record payload {struct-fc}.
+
+Both the {dl-array} field and its length field exist within the same
+option of the <<var-fc,variant>> field named `clinic`.
+
+Moreover, the selector field of the `clinic` variant field is the
+`lawyer` field.
+
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "lawyer", <5>
+      "field-class": {
+        "type": "fixed-length-signed-integer",
+        "length": 16,
+        "byte-order": "little-endian"
+      }
+    },
+    {
+      "name": "clinic",
+      "field-class": {
+        "type": "variant",
+        "selector-field-location": ["event-record-payload", "lawyer"], <4>
+        "options": [
+          {
+            "selector-field-ranges": [[0, 0]],
+            "field-class": {
+              "type": "null-terminated-string"
+            }
+          },
+          {
+            "selector-field-ranges": [[1, 4]],
+            "field-class": {
+              "type": "structure",
+              "member-classes": [
+                {
+                  "name": "lemon", <3>
+                  "field-class": {
+                    "type": "fixed-length-unsigned-integer",
+                    "length": 8,
+                    "byte-order": "big-endian"
+                  }
+                },
+                {
+                  "name": "joystick",
+                  "field-class": {
+                    "type": "dynamic-length-array", <1>
+                    "length-field-location": [ <2>
+                      "event-record-payload",
+                      "clinic",
+                      "lemon"
+                    ],
+                    "element-field-class": {
+                      "type": "null-terminated-string"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "selector-field-ranges": [[5, 5], [7, 7]],
+            "field-class": {
+              "type": "fixed-length-boolean",
+              "length": 8,
+              "byte-order": "little-endian"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+----
+<1> {c-dl-array-fc}.
+<2> Length field location of the {dl-array-fc}.
+<3> Length member class.
+<4> Selector field location of the variant field class.
+<5> Selector member class.
+====
+
+.{c-dl-array} and its length field in the same root field; length field is a variant field.
+====
+Assume the following JSON object is an event record payload {struct-fc}.
+
+The length field of the {dl-array} field is a variant field: it can be
+an 8-bit, a 16-bit, or a 32-bit <<fl-int-fc,{fl-int}>> field, depending
+on the selection of the variant field.
+
+Moreover, the selector field of the variant field is located in another
+root field (event record specific context).
+
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "glass", <3>
+      "field-class": {
+        "type": "variant",
+        "selector-field-location": ["event-record-specific-context", "sel"],
+        "options": [
+          {
+            "selector-field-ranges": [[0, 0]],
+            "field-class": {
+              "type": "fixed-length-unsigned-integer", <4>
+              "length": 8,
+              "byte-order": "little-endian"
+            }
+          },
+          {
+            "selector-field-ranges": [[1, 1]],
+            "field-class": {
+              "type": "fixed-length-unsigned-integer", <4>
+              "length": 16,
+              "byte-order": "little-endian"
+            }
+          },
+          {
+            "selector-field-ranges": [[2, 2]],
+            "field-class": {
+              "type": "fixed-length-unsigned-integer", <4>
+              "length": 32,
+              "byte-order": "little-endian"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "margin",
+      "field-class": {
+        "type": "dynamic-length-array", <1>
+        "length-field-location": ["event-record-payload", "glass"], <2>
+        "element-field-class": {
+          "type": "null-terminated-string"
+        }
+      }
+    }
+  ]
+}
+----
+<1> {c-dl-array-fc}.
+<2> Length field location of the {dl-array-fc}.
+<3> Length member class.
+<4> Possible length field class.
+====
+
+.{c-dl-array} and its length field in the same root field; structure field containing length field is a variant field.
+====
+Assume the following JSON object is an event record payload {struct-fc}.
+
+The length field of the {dl-array} field is within a structure field
+which is a variant field.
+
+Moreover:
+
+* The selector field of the variant field is located in another root
+  field (event record common context).
+
+* The field class of the third option of the `glass` variant field class
+  contains a {dl-blob-fc} (`lock` member); the
+  length field of its instance is the previous member (`eagle`) within
+  the same structure field.
+
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "glass",
+      "field-class": {
+        "type": "variant",
+        "selector-field-location": ["event-record-common-context", "sel"],
+        "options": [
+          {
+            "selector-field-ranges": [[0, 0]],
+            "field-class": {
+              "type": "structure",
+              "member-classes": [
+                {
+                  "name": "eagle",
+                  "field-class": {
+                    "type": "fixed-length-unsigned-integer", <3>
+                    "length": 16,
+                    "byte-order": "little-endian"
+                  }
+                },
+                {
+                  "name": "road",
+                  "field-class": {
+                    "type": "null-terminated-string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "selector-field-ranges": [[32, 172]],
+            "field-class": {
+              "type": "structure",
+              "member-classes": [
+                {
+                  "name": "nuance",
+                  "field-class": {
+                    "type": "null-terminated-string"
+                  }
+                },
+                {
+                  "name": "eagle",
+                  "field-class": {
+                    "type": "fixed-length-unsigned-integer", <3>
+                    "length": 24,
+                    "byte-order": "big-endian"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "selector-field-ranges": [[5, 5]],
+            "field-class": {
+              "type": "structure",
+              "member-classes": [
+                {
+                  "name": "eagle", <5>
+                  "field-class": {
+                    "type": "variable-length-unsigned-integer" <3>
+                  }
+                },
+                {
+                  "name": "lock",
+                  "field-class": {
+                    "type": "dynamic-length-blob",
+                    "length-field-location": [ <4>
+                      "event-record-payload",
+                      "glass",
+                      "eagle"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "margin",
+      "field-class": {
+        "type": "dynamic-length-array", <1>
+        "length-field-location": [ <2>
+          "event-record-payload",
+          "glass",
+          "eagle"
+        ],
+        "element-field-class": {
+          "type": "null-terminated-string"
+        }
+      }
+    }
+  ]
+}
+----
+<1> {c-dl-array-fc}.
+<2> Length field location of the {dl-array-fc}.
+<3> Possible length field class.
+<4> Length field location of the {dl-blob-fc}.
+<5> Length field class for the {dl-blob-fc}.
+
+Note that both the {dl-array} and {dl-blob} field classes have the same
+length field location.
+====
+
+.{c-dl-array} and its length field in another root field.
+====
+Assume the following JSON objects are the event record specific context
+and payload <<struct-fc,structure field classes>> of the same
+<<erc-frag,event record class>>.
+
+The length field of the {dl-array} field of the event record payload is
+within the event record specific context.
+
+.Event record specific context field class.
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "cook",
+      "field-class": {
+        "type": "fixed-length-floating-point-number",
+        "length": 64,
+        "byte-order": "little-endian"
+      }
+    },
+    {
+      "name": "vegetable", <1>
+      "field-class": {
+        "type": "variable-length-unsigned-integer"
+      }
+    }
+  ]
+}
+----
+<1> Length member class.
+
+.Event record payload field class.
+[source,json]
+----
+{
+  "type": "structure",
+  "member-classes": [
+    {
+      "name": "avenue",
+      "field-class": {
+        "type": "dynamic-length-array", <1>
+        "length-field-location": [ <2>
+          "event-record-specific-context",
+          "vegetable"
+        ],
+        "element-field-class": {
+          "type": "null-terminated-string"
+        }
+      }
+    },
+    {
+      "name": "railroad",
+      "field-class": {
+        "type": "null-terminated-string"
+      }
+    }
+  ]
+}
+----
+<1> {c-dl-array-fc}.
+<2> Length field location of the {dl-array-fc}.
+====
 
 [[fl-ba-field-dec]]
 ==== {c-fl-ba} field decoding procedure
@@ -5561,9 +5643,9 @@ To decode an instance of{nbsp}{var-f}:
 
 . Let:
 
-** _**L**_ be the value of the `length` property of{nbsp}{var-f}.
-** {var-v} be an array of booleans of length{nbsp}__**L**__.
-** _**I**_ be an unsigned integer initialized to{nbsp}0.
+.. _**L**_ be the value of the `length` property of{nbsp}{var-f}.
+.. {var-v} be an array of booleans of length{nbsp}__**L**__.
+.. _**I**_ be an unsigned integer initialized to{nbsp}0.
 
 . <<align-dec,Align {var-dec-o-minus-po}>> according
   to{nbsp}{var-f}.
@@ -6108,8 +6190,8 @@ After the field is decoded, {var-dec-o-minus-po}{nbsp}={nbsp}287,424.
 To decode an instance of a {sl-blob-fc}{nbsp}{var-f}:
 
 . Let:
-** _**L**_ be the `length` property of{nbsp}{var-f}.
-** {var-v} be an array of bytes of length{nbsp}__**L**__.
+.. _**L**_ be the `length` property of{nbsp}{var-f}.
+.. {var-v} be an array of bytes of length{nbsp}__**L**__.
 
 . <<align-dec,Align {var-dec-o-minus-po}>> according
   to{nbsp}{var-f}.
@@ -6129,7 +6211,7 @@ To decode an instance of a {dl-str-fc}{nbsp}{var-f}:
 . Let:
 ** _**L**_ be the value of the previously decoded unsigned integer
    field of which the `length-field-location` property of{nbsp}{var-f}
-   indicates the <<field-loc,location>>.
+   indicates the <<field-loc-dec,location>>.
 ** _**I**_ be an unsigned integer initialized to 0.
 ** _**B**_ be a byte.
 ** _**R**_ be a boolean initialized to _true_.
@@ -6161,10 +6243,10 @@ to{nbsp}__**A**__.
 To decode an instance of a {dl-blob-fc}{nbsp}{var-f}:
 
 . Let:
-** _**L**_ be the value of the previously decoded unsigned integer
+.. _**L**_ be the value of the previously decoded unsigned integer
    field of which the `length-field-location` property of{nbsp}{var-f}
-   indicates the <<field-loc,location>>.
-** {var-v} be an array of bytes of length{nbsp}__**L**__.
+   indicates the <<field-loc-dec,location>>.
+.. {var-v} be an array of bytes of length{nbsp}__**L**__.
 
 . <<align-dec,Align {var-dec-o-minus-po}>> according
   to{nbsp}{var-f}.
@@ -6182,7 +6264,7 @@ To decode an instance of a {dl-blob-fc}{nbsp}{var-f}:
 To decode an instance of a {struct-fc}{nbsp}{var-f}:
 
 . Let:
-** _**M**_ be the `members` property of{nbsp}{var-f}.
+** _**M**_ be the `member-classes` property of{nbsp}{var-f}.
 ** {var-v} be an empty structure.
 
 . <<align-dec,Align {var-dec-o-minus-po}>> according
@@ -6203,10 +6285,10 @@ To decode an instance of a {struct-fc}{nbsp}{var-f}:
 To decode an instance of a {sl-array-fc}{nbsp}{var-f}:
 
 . Let:
-** _**L**_ be the `length` property of{nbsp}{var-f}.
-** _**EF**_ be the `element-field-class` property of{nbsp}{var-f}.
-** _**I**_ be an unsigned integer initialized to 0.
-** {var-v} be an array of values of length{nbsp}__**L**__.
+.. _**L**_ be the `length` property of{nbsp}{var-f}.
+.. _**EF**_ be the `element-field-class` property of{nbsp}{var-f}.
+.. _**I**_ be an unsigned integer initialized to 0.
+.. {var-v} be an array of values of length{nbsp}__**L**__.
 
 . <<align-dec,Align {var-dec-o-minus-po}>> according
   to{nbsp}{var-f}.
@@ -6224,12 +6306,12 @@ To decode an instance of a {sl-array-fc}{nbsp}{var-f}:
 To decode an instance of a {dl-array-fc}{nbsp}{var-f}:
 
 . Let:
-** _**L**_ be the value of the previously decoded unsigned integer field
+.. _**L**_ be the value of the previously decoded unsigned integer field
    of which the `length-field-location` property of{nbsp}{var-f}
-   indicates the <<field-loc,location>>.
-** _**EF**_ be the `element-field-class` property of{nbsp}{var-f}.
-** _**I**_ be an unsigned integer initialized to 0.
-** {var-v} be an array of values of length{nbsp}__**L**__
+   indicates the <<field-loc-dec,location>>.
+.. _**EF**_ be the `element-field-class` property of{nbsp}{var-f}.
+.. _**I**_ be an unsigned integer initialized to 0.
+.. {var-v} be an array of values of length{nbsp}__**L**__
 
 . <<align-dec,Align {var-dec-o-minus-po}>> according
   to{nbsp}{var-f}.
@@ -6250,7 +6332,7 @@ Consider the following <<er-payload,event record payload>>
 ----
 {
   "type": "structure",
-  "members": [
+  "member-classes": [
     {
       "name": "len",
       "field-class": {
@@ -6311,9 +6393,9 @@ To decode an instance of an {opt-fc}{nbsp}{var-f}:
 . Let:
 ** _**SEL**_ be the value of the previously decoded <<bool-fc,boolean>>
    or <<int-fc,integer>> field of which the `selector-field-location`
-   property of{nbsp}{var-f} indicates the <<field-loc,location>>.
+   property of{nbsp}{var-f} indicates the <<field-loc-dec,location>>.
 ** _**OF**_ be the `field-class` property of {var-f}.
-** {var-v} be an optional value, initially not set.
+** {var-v} be a nil value.
 
 . If the class of{nbsp}__**SEL**__ is a {fl-bool-fc}
   and _**SEL**_ is _true_, then:
@@ -6326,8 +6408,7 @@ of the `selector-field-ranges` property of{nbsp}{var-f}, then:
 ** <<field-dec,Decode>> one instance of{nbsp}__**OF**__
    as{nbsp}{var-v}.
 
-If {var-v} is set, then {var-v} is the decoded value. Otherwise, there's
-no decoded value (the optional field is disabled).
+{var-v} is the decoded value.
 
 [[var-field-dec]]
 ==== Variant field decoding procedure
@@ -6335,15 +6416,15 @@ no decoded value (the optional field is disabled).
 To decode an instance of an {var-fc}{nbsp}{var-f}:
 
 . Let:
-** _**SEL**_ be the value of the previously decoded <<int-fc,integer>>
+.. _**SEL**_ be the value of the previously decoded <<int-fc,integer>>
    field of which the `selector-field-location` property of{nbsp}{var-f}
-   indicates the <<field-loc,location>>.
-** _**OPTS**_ be the `options` property of{nbsp}{var-f}.
-** _**OF**_ be the `field-class` property of the <<var-fc-opt,variant
+   indicates the <<field-loc-dec,location>>.
+.. _**OPTS**_ be the `options` property of{nbsp}{var-f}.
+.. _**OF**_ be the `field-class` property of the <<var-fc-opt,variant
    field class option>>{nbsp}__**OPT**__ of{nbsp}__**OPTS**__ of
    which{nbsp}__**SEL**__ is an element of any <<int-range-set,integer
    range>> of the `selector-field-ranges` property of{nbsp}__**OPT**__.
-** {var-v} be a value.
+.. {var-v} be a value.
 
 . <<field-dec,Decode>> one instance of{nbsp}__**OF**__
   as{nbsp}{var-v}.
